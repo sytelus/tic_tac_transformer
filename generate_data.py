@@ -23,9 +23,15 @@ def all_trajectories(board, seq, player):
 
 
 def all_optimal_trajectories(board, seq, player, optimal_player={1}):
+    """
+    Given a board, optimal player, current player, generate rest of the trajectories
+    """
+
     winner = check_winner(board)
+    # if this trajectory is done, return
     if winner is not None or board_full(board):
         return [(board.copy(), copy.copy(seq), winner)]
+
     trajectories = []
     moves = (
         optimal_moves(board, player)

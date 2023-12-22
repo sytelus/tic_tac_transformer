@@ -4,6 +4,7 @@ import numpy as np
 
 
 def winning_moves(board, player):
+    """Is there any immediate move that will win the game?"""
     moves = []
     for i in range(3):
         for j in range(3):
@@ -20,22 +21,24 @@ def board_full(board):
 
 
 def check_winner(board):
-    for player in [-1, 1]:
+    for player in [-1, 1]: # check each player
         for i in range(3):
+            # check rows and columns
             if all(board[i, :] == player) or all(board[:, i] == player):
                 return player
+        # check diagonals
         if all(np.diag(board) == player) or all(np.diag(np.fliplr(board)) == player):
             return player
     return None
 
 
 def optimal_moves(board, player):
-    # Winning moves
+    # Is there any immediate winning move
     moves = winning_moves(board, player)
     if moves:
         return moves
 
-    # Blocking moves
+    # Does other player have any immediate move for win?
     moves = winning_moves(board, -player)
     if moves:
         return moves
@@ -50,6 +53,7 @@ def optimal_moves(board, player):
 
 
 def get_valid_moves(board):
+    """Get all valid moves for a given board"""
     return [(i, j) for i in range(3) for j in range(3) if board[i, j] == 0]
 
 
