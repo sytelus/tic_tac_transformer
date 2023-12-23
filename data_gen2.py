@@ -39,6 +39,13 @@ def check_winner(board):
             return player
     return None
 
+def board_result(board):
+    winner = check_winner(board)
+    if winner is not None:
+        return winner
+    if board_full(board):
+        return 0
+    raise ValueError('Game is not over')
 
 def optimal_moves(board, player):
     # Is there any immediate winning move
@@ -130,7 +137,7 @@ def minimax_all(board, game_tree:TGameTree, for_player)->TGameTree:
     if game_tree.value.winner is not None:
         game_tree.value.from_here = (-1, -1) # termial node
         # score is wrt to the for_player
-        game_tree.value.from_here_score = game_tree.value.winner * player * for_player
+        game_tree.value.from_here_score = game_tree.value.winner * for_player
         return game_tree
 
     best_score = float("-inf") * player * for_player
@@ -140,21 +147,21 @@ def minimax_all(board, game_tree:TGameTree, for_player)->TGameTree:
         board[i][j] = player
         # evaluate the board for the other player
         # if other player is winning, minimax score will be 1
-        node = create_game_node(game_tree.value.depth + 1, -player, (i, j), is_optimal=False)
-        game_tree.add(node)
-        minimax_all(board, node, for_player)
+        next_node = create_game_node(game_tree.value.depth + 1, -player, (i, j), is_optimal=False)
+        game_tree.add(next_node)
+        minimax_all(board, next_node, for_player)
         board[i][j] = 0
 
         # score is wrt to the for_player, so negate the score if current player is not same as for_player
-        score = node.value.from_here_score
+        score = next_node.value.from_here_score
         if player == for_player:
             if score > best_score:
                 best_score = score
-                best_node = node
+                best_node = next_node
         else:
             if score < best_score:
                 best_score = score
-                best_node = node
+                best_node = next_node
 
     assert best_node is not None
 
@@ -162,6 +169,9 @@ def minimax_all(board, game_tree:TGameTree, for_player)->TGameTree:
     # note that only parent can set this value as only parent knows the best moves
     for node in game_tree:
         node.value.is_optimal = node.value.from_here_score == best_node.value.from_here_score
+
+    if game_tree.value.depth == 0:
+        pass
 
     # pick score and next move for this node
     game_tree.value.from_here = best_node.value.to_here
@@ -197,13 +207,17 @@ def game_states(node:TGameTree, states=defaultdict(int)):
         states[node.value.winner] += 1
     return states
 
+def is_optimal_node(node:TGameTree, for_player:int)->bool:
+    return (node.value.player == for_player) or \
+                        (node.value.is_optimal and node.value.player == -for_player)
+
 def get_optimal_games(for_player:int, node:TGameTree, optimal_games, non_optimal_games)->None:
     if node.value.winner is not None:
         assert node.is_leaf()
         if node.value.winner != -for_player: # win or draw
             path = list(reversed(list(node.ancestors())))
-            # if for_player played optimally
-            if all([node.value.is_optimal or node.value.player != for_player for node in path]):
+            # if all moves to other player were made optimally
+            if all((is_optimal_node(node, for_player) for node in path)):
                 optimal_games.append(encode_moves(path))
             else:
                 non_optimal_games.append(encode_moves(path))
@@ -220,7 +234,7 @@ def get_game_result(game:str, board=None)->Optional[int]:
         assert board[i][j] == 0
         board[i][j] = player
         player = -player
-    return check_winner(board)
+    return board_result(board)
 
 def get_game_node(game:str, root:TGameTree)->Optional[TGameTree]:
     moves = game.split()
@@ -235,6 +249,36 @@ def get_game_node(game:str, root:TGameTree)->Optional[TGameTree]:
 
     assert node.value.player == player
     return node
+
+def validate_optimal_games(optimal_games, for_player, root):
+    # validate optimal game move correctness
+    for game in optimal_games:
+        winner = get_game_result(game)
+        assert winner == for_player or winner == 0
+    print('All optimal games are indeed win or draw')
+
+    # validate optimality
+    checked_nodes = set()
+    for game in optimal_games:
+        game_leaf = get_game_node(game, root)
+        assert game_leaf is not None
+        # game ends in win or draw
+        assert game_leaf.value.winner is not None and (game_leaf.value.winner == for_player or game_leaf.value.winner == 0)
+        path = list(reversed(list(game_leaf.ancestors())))
+        for node in path:
+            # require that all moves from for_player are optimal
+            assert is_optimal_node(node, for_player)
+
+            # each move from other player results in win or draw if for_player plays optimally
+            if node.value.player == -for_player:
+                if node in checked_nodes:
+                    continue
+                checked_nodes.add(node)
+                for leaf in node.all_leaves():
+                    if all(n.value.is_optimal for n in leaf.ancestors() if n.value.player==-for_player):
+                        assert leaf.value.winner is not None and (leaf.value.winner == for_player or leaf.value.winner == 0)
+    print('All optimal games are indeed optimal')
+
 
 if __name__ == "__main__":
     for_player, start_player = 1, 1
@@ -252,29 +296,4 @@ if __name__ == "__main__":
     print(f"Losing games: {stats[-1]}")
     print(f"Draw games: {stats[0]}")
 
-    # validate optimal game move correctness
-    for game in optimal_games:
-        winner = get_game_result(game)
-        assert winner == for_player or winner == 0
-    print('All optimal games are indeed win or draw')
-
-    # validate optimality
-    checked_nodes = set()
-    for game in optimal_games:
-        game_leaf = get_game_node(game, root)
-        assert game_leaf is not None
-        assert game_leaf.value.winner is not None and (game_leaf.value.winner == for_player or game_leaf.value.winner == 0)
-        path = list(reversed(list(game_leaf.ancestors())))
-        for node in path:
-            # each node in the path must be optimal for for_player
-            assert node.value.player == -for_player or node.value.is_optimal
-
-            # each move from other player results in win or draw if for_player plays optimally
-            if node.value.player == -for_player:
-                if node in checked_nodes:
-                    continue
-                checked_nodes.add(node)
-                for leaf in node.all_leaves():
-                    if all(n.value.is_optimal for n in leaf.ancestors() if n.value.player==for_player):
-                        assert leaf.value.winner is not None and (leaf.value.winner == for_player or leaf.value.winner == 0)
-    print('All optimal games are indeed optimal')
+    validate_optimal_games(optimal_games, for_player, root)
