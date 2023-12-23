@@ -294,12 +294,11 @@ def validate_non_optimal_games(non_optimal_games, for_player, root):
 
     print('All non-optimal games are indeed non-optimal')
 
-
-if __name__ == "__main__":
-    for_player, start_player = 1, 1
-    optimal_games, non_optimal_games = [], []
-
+def gen_optimal_games(for_player:int, start_player:int):
+    print(f"***** Generating optimal games for player {for_player} starting with player {start_player} *****")
     root = get_all_trajectories(for_player=for_player, start_player=start_player)
+
+    optimal_games, non_optimal_games = [], []
     get_optimal_games(for_player, root, optimal_games=optimal_games, non_optimal_games=non_optimal_games)
 
     print(f"Optimal games: {len(optimal_games)}")
@@ -313,3 +312,13 @@ if __name__ == "__main__":
 
     validate_non_optimal_games(non_optimal_games, for_player, root)
     validate_optimal_games(optimal_games, for_player, root)
+
+    return optimal_games, non_optimal_games
+
+if __name__ == "__main__":
+    optimal_games11, non_optimal_games11 = gen_optimal_games(for_player=1, start_player=1)
+    optimal_games12, non_optimal_games12 = gen_optimal_games(for_player=1, start_player=-1)
+    optimal_games21, non_optimal_games21 = gen_optimal_games(for_player=-1, start_player=1)
+    optimal_games22, non_optimal_games22 = gen_optimal_games(for_player=-1, start_player=-1)
+
+
