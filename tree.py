@@ -8,13 +8,16 @@ class Tree(Generic[TNodeValue]):
     def __init__(self, value: TNodeValue):
         self.value: TNodeValue = value
         self.children: List['Tree'] = []
+        self.parent: Optional['Tree'] = None
 
     def add(self, node: 'Tree') -> 'Tree':
         self.children.append(node)
+        node.parent = self
         return node
 
     def remove(self, node: 'Tree') -> 'Tree':
         self.children.remove(node)
+        node.parent = None
         return node
 
     def __contains__(self, node: 'Tree') -> bool:
@@ -40,6 +43,9 @@ class Tree(Generic[TNodeValue]):
 
     def is_leaf(self) -> bool:
         return len(self.children)==0
+
+    def is_root(self) -> bool:
+        return self.parent is None
 
     def visit_leafs(self, visit_fn: Callable[[Any, Any], Any], aggregate: Any) -> Any:
         if len(self.children)==0:
@@ -70,6 +76,21 @@ class Tree(Generic[TNodeValue]):
         for i, child in enumerate(self.children):
             is_last_child = i == (len(self.children) - 1)
             child.pretty_print(prefix, is_last_child)
+
+    def ancestors(self) -> List['Tree']:
+        ancestors = []
+        node = self
+        while node is not None:
+            ancestors.append(node)
+            node = node.parent
+        return ancestors
+
+    def descendants(self) -> Set['Tree']:
+        descendants = set()
+        for child in self.children:
+            descendants.add(child)
+            descendants.update(child.descendants())
+        return descendants
 
     def save(self: 'Tree', file_path: str) -> None:
         with open(file_path, 'w', encoding='utf-8') as file:
