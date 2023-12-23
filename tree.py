@@ -1,22 +1,36 @@
 from collections import deque
-from typing import TypeVar, Generic, Callable, Set, List, Any, Optional, Iterator
+from typing import TypeVar, Generic, Callable, Set, List, Any, Optional, Iterator, Dict
 
 # Define a type variable
+TNodeKey = TypeVar('TNodeKey')
 TNodeValue = TypeVar('TNodeValue')
 
-class Tree(Generic[TNodeValue]):
-    def __init__(self, value: TNodeValue):
+class Tree(Generic[TNodeValue, TNodeKey]):
+
+    _id:int = 0
+
+    @staticmethod
+    def _next_id(node:'TNodeValue')->int:
+        Tree._id += 1
+        return Tree._id
+
+    def __init__(self, value: TNodeValue, node_key_fn: Callable[[TNodeValue], TNodeKey] = _next_id):
+        self.node_key_fn = node_key_fn
+        self.key:TNodeKey = node_key_fn(value)
         self.value: TNodeValue = value
-        self.children: List['Tree'] = []
+
+        self.children: Dict[TNodeKey, 'Tree'] = {}
+
         self.parent: Optional['Tree'] = None
 
     def add(self, node: 'Tree') -> 'Tree':
-        self.children.append(node)
+        assert node.key not in self.children, f"Node with key {node.key} already exists in tree"
+        self.children[node.key] = node
         node.parent = self
         return node
 
     def remove(self, node: 'Tree') -> 'Tree':
-        self.children.remove(node)
+        del self.children[node.key]
         node.parent = None
         return node
 
@@ -24,7 +38,7 @@ class Tree(Generic[TNodeValue]):
         return node in self.children
 
     def __iter__(self)->Iterator['Tree']:
-        return iter(self.children)
+        return iter(self.children.values())
 
     def __len__(self) -> int:
         return len(self.children)
@@ -37,7 +51,7 @@ class Tree(Generic[TNodeValue]):
 
     def count_all(self, only_leaves=False) -> int:
         count = 1 if len(self.children)==0 else 0  # start with one to count self
-        for child in self.children:
+        for child in self.children.values():
             count += child.count_all(only_leaves=only_leaves)  # recursively count all children
         return count
 
@@ -51,14 +65,14 @@ class Tree(Generic[TNodeValue]):
         if len(self.children)==0:
             aggregate = visit_fn(self, aggregate)
         else:
-            for child in self.children:
+            for child in self.children.values():
                 aggregate = child.visit_leafs(visit_fn, aggregate)
         return aggregate
 
     def depth_first_traversal(self, visit_fn: Callable[[Any, Any], Any], aggregate: Any) -> Any:
         aggregate = visit_fn(self, aggregate)
         # then visit all children
-        for child in self.children:
+        for child in self.children.values():
             aggregate = child.depth_first_traversal(visit_fn, aggregate)
         return aggregate
 
@@ -67,61 +81,35 @@ class Tree(Generic[TNodeValue]):
         while queue:
             current_node = queue.popleft()  # O(1) time complexity
             aggregate = visit_fn(current_node, aggregate)
-            queue.extend(current_node.children)  # Extending to the right side, which is efficient
+            queue.extend(current_node.children.values())  # Extending to the right side, which is efficient
         return aggregate
 
     def pretty_print(self, prefix: str = "", is_last: bool = True) -> None:
         print(prefix + ("└── " if is_last else "├── ") + str(self.value))
         prefix += "    " if is_last else "│   "
-        for i, child in enumerate(self.children):
+        for i, child in enumerate(self.children.values()):
             is_last_child = i == (len(self.children) - 1)
             child.pretty_print(prefix, is_last_child)
 
-    def ancestors(self) -> List['Tree']:
-        ancestors = []
+    def ancestors(self) -> Iterator['Tree']:
         node = self
         while node is not None:
-            ancestors.append(node)
+            yield node
             node = node.parent
-        return ancestors
 
-    def descendants(self) -> Set['Tree']:
-        descendants = set()
-        for child in self.children:
-            descendants.add(child)
-            descendants.update(child.descendants())
-        return descendants
+    def descendants(self) -> Iterator['Tree']:
+        for child in self.children.values():
+            yield child
+            for descendant in child.descendants():
+                yield descendant
 
-    def save(self: 'Tree', file_path: str) -> None:
-        with open(file_path, 'w', encoding='utf-8') as file:
-            def save_node(node: Tree, depth: int) -> None:
-                file.write('  ' * depth + str(node.value) + '\n')
-                for child in node.children:
-                    save_node(child, depth + 1)
-            save_node(self, 0)
-
-    @staticmethod
-    def load(file_path: str) -> Optional['Tree']:
-        with open(file_path, 'r', encoding='utf-8') as file:
-            lines = file.readlines()
-
-        node_stack: List[Tree] = []
-        root: Optional[Tree] = None
-        last_depth = -1
-        for line in lines:
-            depth = line.count('  ')
-            node_value = line.strip()
-            node = Tree(node_value)
-            if depth == 0:
-                root = node
-            else:
-                while depth <= last_depth:
-                    node_stack.pop()
-                    last_depth -= 1
-                node_stack[-1].add(node)
-            node_stack.append(node)
-            last_depth = depth
-        return root
+    def all_leaves(self) -> Iterator['Tree']:
+        if self.is_leaf():
+            yield self
+        else:
+            for child in self.children.values():
+                for leaf in child.all_leaves():
+                    yield leaf
 
 # Example of usage
 if __name__ == "__main__":

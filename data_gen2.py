@@ -103,7 +103,14 @@ class GameNode:
     from_here: Tuple[int, int]=(-1,-1) # the best move that should be made
     from_here_score: float=float('nan') # the score of the best move
 
-def minimax_all(board, game_tree:Tree[GameNode], for_player)->Tree[GameNode]:
+TGameNodeKey = Tuple[int, int]
+TGameTree = Tree[GameNode, TGameNodeKey]
+
+def create_game_node(depth, start_player, to_here, is_optimal)->TGameTree:
+    return TGameTree(GameNode(depth=depth, player=start_player, to_here=to_here, is_optimal=is_optimal),
+                     node_key_fn=lambda node: node.to_here)
+
+def minimax_all(board, game_tree:TGameTree, for_player)->TGameTree:
     """
     Minimax algorithm for finding the best move for a given board and player.
     The function evaluates the board for the given player and returns the best score and the best move.
@@ -133,10 +140,8 @@ def minimax_all(board, game_tree:Tree[GameNode], for_player)->Tree[GameNode]:
         board[i][j] = player
         # evaluate the board for the other player
         # if other player is winning, minimax score will be 1
-        node = game_tree.add(Tree(GameNode(
-            depth = game_tree.value.depth + 1,
-            player = -player,
-            to_here = (i, j))))
+        node = create_game_node(game_tree.value.depth + 1, -player, (i, j), is_optimal=False)
+        game_tree.add(node)
         minimax_all(board, node, for_player)
         board[i][j] = 0
 
@@ -170,33 +175,33 @@ def get_all_trajectories(for_player:int, start_player:int):
     """
     Given who plays first, generate all possible trajectories
     """
-    root = Tree(GameNode(depth=0, player=start_player, to_here=(-1, -1), is_optimal=True))
+    root = create_game_node(0, start_player, (-1, -1), is_optimal=True)
     board = np.zeros((3, 3), dtype=int)
     minimax_all(board, root, for_player=for_player)
     return root
 
-def encode_moves(ancestors:List[Tree[GameNode]])->str:
+def encode_moves(ancestors:List[TGameTree])->str:
     """
     Encode a sequence of moves as a string of the form "X A1 B2 C3"
     First character is the player who played first, rest are moves
     """
     moves = "X" if ancestors[0].value.player == 1 else "O"
-    moves += " ".join([chr(ord('A') - 1 +
-                         node.value.to_here[0])+str(node.value.to_here[1])
-                     for node in ancestors[1:]])
+    moves += " " + " ".join([chr(ord('A') + node.value.to_here[0]) +
+                             str(node.value.to_here[1])
+                    for node in ancestors[1:]])
     return moves
 
-def game_states(node:Tree[GameNode], states=defaultdict(int)):
+def game_states(node:TGameTree, states=defaultdict(int)):
     if node.value.winner is not None:
         assert node.is_leaf()
         states[node.value.winner] += 1
     return states
 
-def get_optimal_games(for_player:int, node:Tree[GameNode], optimal_games, non_optimal_games)->None:
+def get_optimal_games(for_player:int, node:TGameTree, optimal_games, non_optimal_games)->None:
     if node.value.winner is not None:
         assert node.is_leaf()
         if node.value.winner != -for_player: # win or draw
-            path = node.ancestors()
+            path = list(reversed(list(node.ancestors())))
             # if for_player played optimally
             if all([node.value.is_optimal or node.value.player != for_player for node in path]):
                 optimal_games.append(encode_moves(path))
@@ -206,6 +211,30 @@ def get_optimal_games(for_player:int, node:Tree[GameNode], optimal_games, non_op
         for child in node:
             get_optimal_games(for_player, child, optimal_games, non_optimal_games)
 
+def get_game_result(game:str, board=None)->Optional[int]:
+    board = np.zeros((3, 3), dtype=int) if board is None else board
+    moves = game.split()
+    player = 1 if moves[0] == 'X' else -1
+    for mi, move in enumerate(moves[1:]):
+        i, j = ord(move[0]) - ord('A'), int(move[1])
+        assert board[i][j] == 0
+        board[i][j] = player
+        player = -player
+    return check_winner(board)
+
+def get_game_node(game:str, root:TGameTree)->Optional[TGameTree]:
+    moves = game.split()
+    player = 1 if moves[0] == 'X' else -1
+
+    node = root
+    for move in moves[1:]:
+        assert node.value.player == player
+        i, j = ord(move[0]) - ord('A'), int(move[1])
+        node = node.children[(i, j)]
+        player = -player
+
+    assert node.value.player == player
+    return node
 
 if __name__ == "__main__":
     for_player, start_player = 1, 1
@@ -217,3 +246,27 @@ if __name__ == "__main__":
     print(f"Optimal games: {len(optimal_games)}")
     print(f"Non-optimal games: {len(non_optimal_games)}")
     print(f"Total games: {len(optimal_games) + len(non_optimal_games)}")
+
+    stats = root.depth_first_traversal(game_states, defaultdict(int))
+    print(f"Winning games: {stats[1]}")
+    print(f"Losing games: {stats[-1]}")
+    print(f"Draw games: {stats[0]}")
+
+    # validate optimal game move correctness
+    for game in optimal_games:
+        winner = get_game_result(game)
+        assert winner == for_player or winner == 0
+    print('All optimal games are valid')
+
+    # validate optimality
+    for game in non_optimal_games:
+        game_leaf = get_game_node(game, root)
+        assert game_leaf is not None
+        assert game_leaf.value.winner is not None and (game_leaf.value.winner == for_player or game_leaf.value.winner == 0)
+        path = list(reversed(list(game_leaf.ancestors())))
+        for node in path:
+            if node.value.player == -for_player:
+                # we want to make sure that all descendants of this nodes have win or draw
+                for leaf in node.all_leaves():
+                    assert leaf.value.winner is not None and (leaf.value.winner == for_player or leaf.value.winner == 0)
+    print('All optimal games are actually optimal')
