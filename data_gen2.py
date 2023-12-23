@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import List, Tuple
 import torch
 import numpy as np
+import itertools
 
 from tree import Tree
 
@@ -102,6 +103,7 @@ def minimax(board, player):
 
 @dataclass
 class GameNode:
+    for_player:int # the player for whom we are generating the optimal moves
     depth:int
     player: int # 1 or -1, whoes turn it is at this node
     to_here: Tuple[int, int] # the move that was made to get to this node, (-1, -1) for root node
@@ -113,9 +115,10 @@ class GameNode:
 TGameNodeKey = Tuple[int, int]
 TGameTree = Tree[GameNode, TGameNodeKey]
 
-def create_game_node(depth, start_player, to_here, is_optimal)->TGameTree:
-    return TGameTree(GameNode(depth=depth, player=start_player, to_here=to_here, is_optimal=is_optimal),
-                     node_key_fn=lambda node: node.to_here)
+def create_game_node(depth:int, for_player:int, start_player:int, to_here:Tuple[int, int], is_optimal:bool)->TGameTree:
+    return TGameTree(GameNode(depth=depth, for_player=for_player,
+                              player=start_player, to_here=to_here, is_optimal=is_optimal),
+                              node_key_fn=lambda node: node.to_here)
 
 def minimax_all(board, game_tree:TGameTree, for_player)->TGameTree:
     """
@@ -147,7 +150,8 @@ def minimax_all(board, game_tree:TGameTree, for_player)->TGameTree:
         board[i][j] = player
         # evaluate the board for the other player
         # if other player is winning, minimax score will be 1
-        next_node = create_game_node(game_tree.value.depth + 1, -player, (i, j), is_optimal=False)
+        next_node = create_game_node(game_tree.value.depth + 1,
+                                     for_player, -player, (i, j), is_optimal=False)
         game_tree.add(next_node)
         minimax_all(board, next_node, for_player)
         board[i][j] = 0
@@ -185,7 +189,7 @@ def get_all_trajectories(for_player:int, start_player:int):
     """
     Given who plays first, generate all possible trajectories
     """
-    root = create_game_node(0, start_player, (-1, -1), is_optimal=True)
+    root = create_game_node(0, for_player, start_player, (-1, -1), is_optimal=True)
     board = np.zeros((3, 3), dtype=int)
     minimax_all(board, root, for_player=for_player)
     return root
@@ -195,8 +199,9 @@ def encode_moves(ancestors:List[TGameTree])->str:
     Encode a sequence of moves as a string of the form "X A1 B2 C3"
     First character is the player who played first, rest are moves
     """
-    moves = "X" if ancestors[0].value.player == 1 else "O"
-    moves += " " + " ".join([chr(ord('A') + node.value.to_here[0]) +
+    moves = 'X' if ancestors[0].value.player == 1 else 'O' # first player
+    moves += 'X' if ancestors[0].value.for_player == 1 else 'O' # for player
+    moves += ' ' + ' '.join([chr(ord('A') + node.value.to_here[0]) +
                              str(node.value.to_here[1])
                     for node in ancestors[1:]])
     return moves
@@ -211,7 +216,7 @@ def is_optimal_node(node:TGameTree, for_player:int)->bool:
     return (node.value.player == for_player) or \
                         (node.value.is_optimal and node.value.player == -for_player)
 
-def get_optimal_games(for_player:int, node:TGameTree, optimal_games, non_optimal_games)->None:
+def get_optimal_games(for_player:int, node:TGameTree, optimal_games:List[str], non_optimal_games:List[str])->None:
     if node.value.winner is not None:
         assert node.is_leaf()
         if node.value.winner != -for_player: # win or draw
@@ -228,7 +233,7 @@ def get_optimal_games(for_player:int, node:TGameTree, optimal_games, non_optimal
 def get_game_result(game:str, board=None)->Optional[int]:
     board = np.zeros((3, 3), dtype=int) if board is None else board
     moves = game.split()
-    player = 1 if moves[0] == 'X' else -1
+    player, for_player = decode_first_move(moves[0])
     for mi, move in enumerate(moves[1:]):
         i, j = ord(move[0]) - ord('A'), int(move[1])
         assert board[i][j] == 0
@@ -236,9 +241,13 @@ def get_game_result(game:str, board=None)->Optional[int]:
         player = -player
     return board_result(board)
 
+def decode_first_move(move:str)->Tuple[int, int]:
+    """Returns (start_player, for_player))"""
+    return (1 if move[0] == 'X' else -1, 1 if move[1] == 'X' else -1)
+
 def get_game_node(game:str, root:TGameTree)->Optional[TGameTree]:
     moves = game.split()
-    player = 1 if moves[0] == 'X' else -1
+    player, for_player = decode_first_move(moves[0])
 
     node = root
     for move in moves[1:]:
@@ -248,6 +257,8 @@ def get_game_node(game:str, root:TGameTree)->Optional[TGameTree]:
         player = -player
 
     assert node.value.player == player
+    assert node.value.for_player == for_player
+
     return node
 
 def validate_optimal_games(optimal_games, for_player, root):
@@ -313,12 +324,18 @@ def gen_optimal_games(for_player:int, start_player:int):
     validate_non_optimal_games(non_optimal_games, for_player, root)
     validate_optimal_games(optimal_games, for_player, root)
 
-    return optimal_games, non_optimal_games
+    return optimal_games
 
 if __name__ == "__main__":
-    optimal_games11, non_optimal_games11 = gen_optimal_games(for_player=1, start_player=1)
-    optimal_games12, non_optimal_games12 = gen_optimal_games(for_player=1, start_player=-1)
-    optimal_games21, non_optimal_games21 = gen_optimal_games(for_player=-1, start_player=1)
-    optimal_games22, non_optimal_games22 = gen_optimal_games(for_player=-1, start_player=-1)
+    optimal_games11 = gen_optimal_games(for_player=1, start_player=1)
+    optimal_games12 = gen_optimal_games(for_player=1, start_player=-1)
+    optimal_games21 = gen_optimal_games(for_player=-1, start_player=1)
+    optimal_games22 = gen_optimal_games(for_player=-1, start_player=-1)
 
-
+    filename = 'xo_games.txt'
+    with open(filename, 'w', encoding='utf-8') as f:
+        for game in itertools.chain(optimal_games11,
+                                    optimal_games12,
+                                    optimal_games21,
+                                    optimal_games22,):
+            f.write(game + '\n')
