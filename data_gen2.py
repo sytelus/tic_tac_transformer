@@ -256,17 +256,25 @@ if __name__ == "__main__":
     for game in optimal_games:
         winner = get_game_result(game)
         assert winner == for_player or winner == 0
-    print('All optimal games are valid')
+    print('All optimal games are indeed win or draw')
 
     # validate optimality
-    for game in non_optimal_games:
+    checked_nodes = set()
+    for game in optimal_games:
         game_leaf = get_game_node(game, root)
         assert game_leaf is not None
         assert game_leaf.value.winner is not None and (game_leaf.value.winner == for_player or game_leaf.value.winner == 0)
         path = list(reversed(list(game_leaf.ancestors())))
         for node in path:
+            # each node in the path must be optimal for for_player
+            assert node.value.player == -for_player or node.value.is_optimal
+
+            # each move from other player results in win or draw if for_player plays optimally
             if node.value.player == -for_player:
-                # we want to make sure that all descendants of this nodes have win or draw
+                if node in checked_nodes:
+                    continue
+                checked_nodes.add(node)
                 for leaf in node.all_leaves():
-                    assert leaf.value.winner is not None and (leaf.value.winner == for_player or leaf.value.winner == 0)
-    print('All optimal games are actually optimal')
+                    if all(n.value.is_optimal for n in leaf.ancestors() if n.value.player==for_player):
+                        assert leaf.value.winner is not None and (leaf.value.winner == for_player or leaf.value.winner == 0)
+    print('All optimal games are indeed optimal')
