@@ -1,3 +1,4 @@
+from collections import deque
 from typing import TypeVar, Generic, Callable, Set, List, Any, Optional, Iterator
 
 # Define a type variable
@@ -56,11 +57,11 @@ class Tree(Generic[TNodeValue]):
         return aggregate
 
     def breadth_first_traversal(self, visit_fn: Callable[[Any, Any], Any], aggregate: Any) -> Any:
-        queue: List['Tree'] = [self]
+        queue:deque['Tree'] = deque([self])  # Using deque for efficient pops from the front
         while queue:
-            current_node = queue.pop(0)
+            current_node = queue.popleft()  # O(1) time complexity
             aggregate = visit_fn(current_node, aggregate)
-            queue.extend(current_node.children)
+            queue.extend(current_node.children)  # Extending to the right side, which is efficient
         return aggregate
 
     def pretty_print(self, prefix: str = "", is_last: bool = True) -> None:
