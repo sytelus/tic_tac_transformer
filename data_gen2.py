@@ -279,6 +279,21 @@ def validate_optimal_games(optimal_games, for_player, root):
                         assert leaf.value.winner is not None and (leaf.value.winner == for_player or leaf.value.winner == 0)
     print('All optimal games are indeed optimal')
 
+def validate_non_optimal_games(non_optimal_games, for_player, root):
+    # validate non-optimality
+    checked_nodes = set()
+    for game in non_optimal_games:
+        game_leaf = get_game_node(game, root)
+        assert game_leaf is not None
+        # game ends in loss
+        #assert game_leaf.value.winner is not None and (game_leaf.value.winner != for_player)
+        path = list(reversed(list(game_leaf.ancestors())))
+
+        # require that all moves from for_player are not optimal
+        assert not all(is_optimal_node(node, for_player) for node in path)
+
+    print('All non-optimal games are indeed non-optimal')
+
 
 if __name__ == "__main__":
     for_player, start_player = 1, 1
@@ -296,4 +311,5 @@ if __name__ == "__main__":
     print(f"Losing games: {stats[-1]}")
     print(f"Draw games: {stats[0]}")
 
+    validate_non_optimal_games(non_optimal_games, for_player, root)
     validate_optimal_games(optimal_games, for_player, root)
